@@ -25,6 +25,10 @@ Keep `.env` only on your own computers. It is deliberately excluded from Git.
 
 - Start the server: `start.bat`
 - After an update is sent from the Mac: double-click `update-sizer.bat`
+- Make this laptop the always-on server once: double-click `install-windows-server.bat`
 
 `update-sizer.bat` downloads the newest code from the private repository, leaves
 your `.env` untouched, and restarts the local server on port 8787.
+
+`install-windows-server.bat` adds a small hidden server watcher to Windows
+startup. It launches the server after sign-in and restarts it if Node exits.
