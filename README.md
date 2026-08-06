@@ -17,3 +17,14 @@
 - Приложение использует только чтение ордеров и позиций, а не создание/изменение сделок.
 - Bybit API видит сетку после её создания как набор обычных лимитных ордеров. Поля формы до нажатия Create API не отдаёт.
 - Если Bybit ругается на `timestamp` или `recv_window`, синхронизируй время компьютера: Windows `Date & Time` → `Sync now`, затем перезапусти `Start Server`.
+# Bybit Sizer
+
+## Windows server workflow
+
+Keep `.env` only on your own computers. It is deliberately excluded from Git.
+
+- Start the server: `start.bat`
+- After an update is sent from the Mac: double-click `update-sizer.bat`
+
+`update-sizer.bat` downloads the newest code from the private repository, leaves
+your `.env` untouched, and restarts the local server on port 8787.
