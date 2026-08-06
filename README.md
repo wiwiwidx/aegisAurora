@@ -32,3 +32,10 @@ your `.env` untouched, and restarts the local server on port 8787.
 
 `install-windows-server.bat` adds a small hidden server watcher to Windows
 startup. It launches the server after sign-in and restarts it if Node exits.
+
+## Open the Windows server from a Mac
+
+Keep the Sizer running only on Windows. Install Tailscale on both computers and
+sign in to the same Tailscale account. Then run `enable-mac-access.bat` on
+Windows once. It creates a private HTTPS link to the Windows-only server; the
+app is not exposed to the public internet.
