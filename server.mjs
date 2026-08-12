@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join } from 'node:path';
@@ -45,6 +45,33 @@ function friendlyError(error) {
     return 'Время компьютера не синхронизировано. В Windows: Date & Time → Sync now, затем перезапусти Start Server.';
   }
   return message;
+}
+
+function telegramUser(initData) {
+  if (!env.TELEGRAM_BOT_TOKEN) throw new Error('Telegram Mini App ещё не настроен на сервере');
+  const params = new URLSearchParams(initData || '');
+  const hash = params.get('hash');
+  if (!hash) throw new Error('Открой терминал через Telegram');
+  params.delete('hash');
+  const checkString = [...params.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => `${key}=${value}`).join('\n');
+  const secret = createHmac('sha256', 'WebAppData').update(env.TELEGRAM_BOT_TOKEN).digest();
+  const signature = createHmac('sha256', secret).update(checkString).digest('hex');
+  if (hash.length !== signature.length || !timingSafeEqual(Buffer.from(hash), Buffer.from(signature))) throw new Error('Telegram-подпись не прошла проверку');
+  const authDate = Number(params.get('auth_date'));
+  if (!authDate || Date.now() / 1000 - authDate > 24 * 60 * 60) throw new Error('Сессия Telegram устарела — открой Mini App заново');
+  const user = JSON.parse(params.get('user') || '{}');
+  if (!user.id || (env.TELEGRAM_ALLOWED_USER_ID && String(user.id) !== env.TELEGRAM_ALLOWED_USER_ID)) throw new Error('Этот Telegram-аккаунт не имеет доступа');
+  return user;
+}
+
+function guardApi(request, response) {
+  if (env.TELEGRAM_REQUIRE_AUTH !== '1') return true;
+  try { telegramUser(request.headers['x-telegram-init-data']); return true; }
+  catch (error) {
+    response.writeHead(401, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ error: friendlyError(error) }));
+    return false;
+  }
 }
 
 function entryPrice(order) {
@@ -293,6 +320,7 @@ async function overview(pnlHours = 24, pnlStart = null, pnlEnd = null) {
 createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host}`);
   if (url.pathname === '/api/overview') {
+    if (!guardApi(request, response)) return;
     try {
       const requestedHours = Number(url.searchParams.get('pnlWindow'));
       const requestedStart = Number(url.searchParams.get('pnlStart'));
@@ -311,6 +339,7 @@ createServer(async (request, response) => {
     return;
   }
   if (url.pathname === '/api/snapshot') {
+    if (!guardApi(request, response)) return;
     try {
       const symbol = (url.searchParams.get('symbol') || env.BYBIT_SYMBOL || 'ETHUSDT').toUpperCase();
       const data = await snapshot(symbol);
@@ -323,6 +352,7 @@ createServer(async (request, response) => {
     return;
   }
   if (url.pathname === '/api/candles') {
+    if (!guardApi(request, response)) return;
     try {
       const symbol = (url.searchParams.get('symbol') || 'BTCUSDT').toUpperCase();
       const interval = url.searchParams.get('interval') || '60';

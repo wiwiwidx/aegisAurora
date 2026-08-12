@@ -44,3 +44,24 @@ app is not exposed to the public internet.
 By default, use `start.bat` to start the Sizer and keep its window open. Use `stop-sizer.bat` to stop it, or `restart-sizer.bat` to restart it.
 
 If an older setup enabled background start after Windows sign-in, run `disable-autostart.bat` once. It removes that startup shortcut; the Sizer will then run only when you start it manually.
+
+## Telegram Mini App
+
+The same responsive interface is used on desktop, Mac and phone. When opened
+inside Telegram it switches to a phone-first layout and uses Telegram's native
+safe areas and theme.
+
+For the first private Mini App launch we need a stable public **HTTPS** URL to
+the Windows server and then set that URL as the Main Mini App for
+`@AegisAurorabot` in BotFather. Do not expose the server without access checks.
+When the public tunnel is configured, add these values only to Windows `.env`:
+
+```env
+TELEGRAM_BOT_TOKEN=put-the-bot-token-here
+TELEGRAM_ALLOWED_USER_ID=your-numeric-telegram-id
+TELEGRAM_REQUIRE_AUTH=1
+```
+
+`TELEGRAM_REQUIRE_AUTH=1` makes every API request validate Telegram's signed
+Mini App session and rejects anyone except `TELEGRAM_ALLOWED_USER_ID`. Never
+put the token in Git or in a chat.

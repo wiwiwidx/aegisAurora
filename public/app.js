@@ -1,4 +1,14 @@
 const $ = (selector) => document.querySelector(selector);
+const telegram = window.Telegram?.WebApp;
+if (telegram) {
+  document.body.classList.add('telegram');
+  telegram.ready();
+  telegram.expand();
+  telegram.setHeaderColor?.('#101827');
+  telegram.setBackgroundColor?.('#101827');
+  telegram.disableVerticalSwipes?.();
+}
+const apiHeaders = () => telegram?.initData ? { 'X-Telegram-Init-Data': telegram.initData } : {};
 const formatter = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 });
 const priceFormatter = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 5 });
 const quantityFormatter = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 8 });
@@ -93,7 +103,7 @@ async function loadChart() {
   const symbol = (gridPlan.symbol || 'BTCUSDT').toUpperCase();
   holder.innerHTML = '<span>Загрузка графика…</span>';
   try {
-    const response = await fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&interval=${chartInterval}`);
+    const response = await fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&interval=${chartInterval}`, { headers: apiHeaders() });
     const data = await response.json();
     if (data.error) throw new Error(data.error);
     if (request !== chartRequest || !$('#trade-chart')) return;
@@ -146,7 +156,7 @@ function render(data) {
   $('#app').innerHTML = `${tabs}${activeTab === 'planner' ? plannerView() : activeTab === 'pending' ? pendingView : activeTab === 'history' ? historyView : activeView}`;
   if (activeTab === 'planner') loadChart();
 }
-async function load() { try { const params = new URLSearchParams({ pnlWindow: String(pnlWindow) }); if (pnlWindow === -1 && pnlRange?.start && pnlRange?.end) { params.set('pnlStart', String(pnlRange.start)); params.set('pnlEnd', String(pnlRange.end)); } const response = await fetch(`/api/overview?${params}`); const data = await response.json(); if (data.error) throw new Error(data.error); render(data); } catch (error) { $('#hint').textContent = `Не удалось получить данные: ${error.message}`; } }
+async function load() { try { const params = new URLSearchParams({ pnlWindow: String(pnlWindow) }); if (pnlWindow === -1 && pnlRange?.start && pnlRange?.end) { params.set('pnlStart', String(pnlRange.start)); params.set('pnlEnd', String(pnlRange.end)); } const response = await fetch(`/api/overview?${params}`, { headers: apiHeaders() }); const data = await response.json(); if (data.error) throw new Error(data.error); render(data); } catch (error) { $('#hint').textContent = `Не удалось получить данные: ${error.message}`; } }
 $('#refresh').onclick = load;
 document.addEventListener('change', (event) => {
   if (event.target.matches('.pnl-window')) {
