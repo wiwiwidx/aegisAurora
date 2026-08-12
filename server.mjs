@@ -27,6 +27,16 @@ async function bybitResult(path, params) {
 
 async function bybit(path, params) { return (await bybitResult(path, params)).list || []; }
 
+// Public market data deliberately uses no account credentials. The chart can
+// therefore be displayed even when the read-only account API is unavailable.
+async function publicBybit(path, params) {
+  const query = new URLSearchParams(params).toString();
+  const response = await fetch(`https://api.bybit.com${path}?${query}`);
+  const payload = await response.json();
+  if (payload.retCode) throw new Error(payload.retMsg || 'Bybit market-data error');
+  return payload.result || {};
+}
+
 function number(value) { return Number(value || 0); }
 
 function friendlyError(error) {
@@ -306,6 +316,25 @@ createServer(async (request, response) => {
       const data = await snapshot(symbol);
       response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       response.end(JSON.stringify(data));
+    } catch (error) {
+      response.writeHead(502, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ error: friendlyError(error) }));
+    }
+    return;
+  }
+  if (url.pathname === '/api/candles') {
+    try {
+      const symbol = (url.searchParams.get('symbol') || 'BTCUSDT').toUpperCase();
+      const interval = url.searchParams.get('interval') || '60';
+      if (!/^[A-Z0-9]{3,20}$/.test(symbol) || !/^(1|3|5|15|30|60|120|240|360|720|D|W|M)$/.test(interval)) {
+        throw new Error('Некорректный тикер или таймфрейм');
+      }
+      const data = await publicBybit('/v5/market/kline', { category: 'linear', symbol, interval, limit: '160' });
+      const candles = (data.list || []).map(([time, open, high, low, close, volume]) => ({
+        time: number(time), open: number(open), high: number(high), low: number(low), close: number(close), volume: number(volume)
+      })).reverse();
+      response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      response.end(JSON.stringify({ symbol, interval, candles }));
     } catch (error) {
       response.writeHead(502, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ error: friendlyError(error) }));

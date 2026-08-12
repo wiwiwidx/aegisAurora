@@ -17,6 +17,9 @@ let lastData = null;
 const gridKey = 'bybit-sizer:grid-plan';
 const defaultGridPlan = { symbol: 'BTCUSDT', side: 'Sell', low: '', high: '', value: '100', orders: '5', stop: '', take: '', priceShape: 'equal', valueShape: 'ascending' };
 let gridPlan = { ...defaultGridPlan, ...JSON.parse(localStorage.getItem(gridKey) || '{}') };
+let chartInterval = '60';
+let chartTarget = 'low';
+let chartRequest = 0;
 const toLocalInput = (timestamp) => {
   if (!timestamp) return '';
   const date = new Date(timestamp);
@@ -59,7 +62,43 @@ function plannerView() {
   const input = (key, label, type = 'text') => `<label><span>${label}</span><input data-grid="${key}" class="plan-input" type="${type}" inputmode="decimal" value="${gridPlan[key]}"></label>`;
   const select = (key, label, values) => `<label><span>${label}</span><select data-grid="${key}" class="plan-input">${values.map(([value, title]) => `<option value="${value}"${gridPlan[key] === value ? ' selected' : ''}>${title}</option>`).join('')}</select></label>`;
   const rows = grid.rows.length ? grid.rows.map((row) => `<tr><td>${row.index}</td><td>${price(row.entry)}</td><td>${usd(row.value)}</td><td>${quantity(row.qty)}</td><td>${money(row.value / grid.total * 100)}%</td></tr>`).join('') : '<tr><td colspan="5">Задай диапазон, стоимость и количество ордеров</td></tr>';
-  return `<section class="grid-planner"><div class="planner-head"><div><p class="eyebrow">ПЛАН · ТОЛЬКО РАСЧЁТ</p><h2>Масштабируемый ордер</h2></div><span>Ничего не отправляется на Bybit</span></div><div class="planner-content"><section class="levels-form grid-form"><div class="form-title">Параметры сетки</div>${input('symbol', 'Тикер')}${select('side', 'Направление', [['Sell', 'SHORT'], ['Buy', 'LONG']])}${input('low', 'Нижняя цена')}${input('high', 'Верхняя цена')}${input('value', 'Стоимость, USDT')}${input('orders', 'Количество ордеров', 'number')}${select('priceShape', 'Price', [['equal', 'Ровная'], ['ascending', 'Восходящая'], ['descending', 'Нисходящая']])}${select('valueShape', 'Value', [['equal', 'Ровный'], ['ascending', 'Восходящий'], ['descending', 'Нисходящий']])}${input('stop', 'Stop Loss')}${input('take', 'Take Profit')}</section><section class="grid-result"><div><span>Объём</span><b>${usd(grid.total)}</b></div><div><span>AVG entry</span><b>${price(grid.average)}</b></div><div><span>Full Risk</span><b class="loss">${signedUsd(grid.risk)}</b></div><div><span>Full TP</span><b class="profit">${signedUsd(grid.profit)}</b></div><div><span>Full RR</span><b>${grid.rr != null ? `${money(grid.rr)}R` : '—'}</b></div><div><span>Qty</span><b>${quantity(grid.qty)}</b></div></section></div><section class="table-block"><h3>Предпросмотр сетки · ${gridPlan.symbol || 'тикер'}</h3><table><thead><tr><th>Order</th><th>Entry</th><th>Value</th><th>Qty</th><th>Доля</th></tr></thead><tbody>${rows}</tbody></table></section></section>`;
+  const chartTools = [['low', 'Нижняя граница'], ['high', 'Верхняя граница'], ['stop', 'SL'], ['take', 'TP']]
+    .map(([key, label]) => `<button class="chart-tool ${chartTarget === key ? 'active' : ''}" data-chart-target="${key}">${label}</button>`).join('');
+  return `<section class="grid-planner"><div class="planner-head"><div><p class="eyebrow">ПЛАН · ТОЛЬКО РАСЧЁТ</p><h2>Масштабируемый ордер</h2></div><span>Ничего не отправляется на Bybit</span></div><div class="chart-workspace"><section class="chart-panel"><div class="chart-toolbar"><b>${gridPlan.symbol || 'BTCUSDT'}</b><div class="timeframes">${[['5','5m'],['15','15m'],['60','1h'],['240','4h'],['D','1D']].map(([value,label]) => `<button data-interval="${value}" class="${chartInterval === value ? 'active' : ''}">${label}</button>`).join('')}</div></div><div class="chart-tools"><span>Кликни по графику:</span>${chartTools}</div><div id="trade-chart" class="trade-chart"><span>Загрузка графика…</span></div></section><section class="levels-form grid-form"><div class="form-title">Параметры сетки</div>${input('symbol', 'Тикер')}${select('side', 'Направление', [['Sell', 'SHORT'], ['Buy', 'LONG']])}${input('low', 'Нижняя цена')}${input('high', 'Верхняя цена')}${input('value', 'Стоимость, USDT')}${input('orders', 'Количество ордеров', 'number')}${select('priceShape', 'Price', [['equal', 'Ровная'], ['ascending', 'Восходящая'], ['descending', 'Нисходящая']])}${select('valueShape', 'Value', [['equal', 'Ровный'], ['ascending', 'Восходящий'], ['descending', 'Нисходящий']])}${input('stop', 'Stop Loss')}${input('take', 'Take Profit')}</section></div><section class="grid-result"><div><span>Объём</span><b>${usd(grid.total)}</b></div><div><span>AVG entry</span><b>${price(grid.average)}</b></div><div><span>Full Risk</span><b class="loss">${signedUsd(grid.risk)}</b></div><div><span>Full TP</span><b class="profit">${signedUsd(grid.profit)}</b></div><div><span>Full RR</span><b>${grid.rr != null ? `${money(grid.rr)}R` : '—'}</b></div><div><span>Qty</span><b>${quantity(grid.qty)}</b></div></section><section class="table-block"><h3>Предпросмотр сетки · ${gridPlan.symbol || 'тикер'}</h3><table><thead><tr><th>Order</th><th>Entry</th><th>Value</th><th>Qty</th><th>Доля</th></tr></thead><tbody>${rows}</tbody></table></section></section>`;
+}
+
+function chartSvg(candles) {
+  const width = 1000, height = 430, pad = { top: 20, right: 72, bottom: 24, left: 10 };
+  const all = candles.flatMap((candle) => [candle.high, candle.low]);
+  [gridPlan.low, gridPlan.high, gridPlan.stop, gridPlan.take].map(parsePrice).filter(Boolean).forEach((value) => all.push(value));
+  const min = Math.min(...all), max = Math.max(...all), range = Math.max(max - min, max * 0.002);
+  const y = (value) => pad.top + (max - value) / range * (height - pad.top - pad.bottom);
+  const x = (index) => pad.left + (index + .5) * (width - pad.left - pad.right) / candles.length;
+  const step = (width - pad.left - pad.right) / candles.length, bodyWidth = Math.max(1, step * .62);
+  const candlesSvg = candles.map((candle, index) => {
+    const up = candle.close >= candle.open, color = up ? '#44d19b' : '#ff7586';
+    const top = y(Math.max(candle.open, candle.close)), bottom = y(Math.min(candle.open, candle.close));
+    return `<line x1="${x(index)}" x2="${x(index)}" y1="${y(candle.high)}" y2="${y(candle.low)}" stroke="${color}"/><rect x="${x(index)-bodyWidth/2}" y="${top}" width="${bodyWidth}" height="${Math.max(1,bottom-top)}" fill="${color}"/>`;
+  }).join('');
+  const grid = makeGrid(gridPlan);
+  const line = (value, label, color, dash = '') => value ? `<g><line x1="${pad.left}" x2="${width-pad.right}" y1="${y(value)}" y2="${y(value)}" stroke="${color}" stroke-width="1.5" ${dash ? `stroke-dasharray="${dash}"` : ''}/><text x="${width-pad.right+5}" y="${y(value)+4}" fill="${color}" font-size="12">${label} ${price(value)}</text></g>` : '';
+  const orders = grid.rows.map((row, index) => line(row.entry, `#${index + 1}`, '#f6c24c', '5 4')).join('');
+  return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-label="График цены">${candlesSvg}${orders}${line(parsePrice(gridPlan.low),'LOW','#7fb3ff')}${line(parsePrice(gridPlan.high),'HIGH','#7fb3ff')}${line(parsePrice(gridPlan.stop),'SL','#ff7586')}${line(parsePrice(gridPlan.take),'TP','#44d19b')}<rect class="chart-hit" data-chart-min="${min}" data-chart-max="${max}" x="${pad.left}" y="${pad.top}" width="${width-pad.left-pad.right}" height="${height-pad.top-pad.bottom}" fill="transparent"/></svg>`;
+}
+
+async function loadChart() {
+  const holder = $('#trade-chart');
+  if (!holder) return;
+  const request = ++chartRequest;
+  const symbol = (gridPlan.symbol || 'BTCUSDT').toUpperCase();
+  holder.innerHTML = '<span>Загрузка графика…</span>';
+  try {
+    const response = await fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&interval=${chartInterval}`);
+    const data = await response.json();
+    if (data.error) throw new Error(data.error);
+    if (request !== chartRequest || !$('#trade-chart')) return;
+    holder.innerHTML = chartSvg(data.candles);
+  } catch (error) { holder.innerHTML = `<span>Не удалось загрузить график: ${error.message}</span>`; }
 }
 
 function dealCard(deal, expandedDeals) {
@@ -105,6 +144,7 @@ function render(data) {
   const pendingView = pendingDeals.length ? pendingDeals.map((deal) => dealCard(deal, expandedDeals)).join('') : '<section class="empty">Нет ожидающих лимиток</section>';
   const historyView = history.length ? `<section class="history-table"><table><thead><tr><th>Инструмент</th><th>Направление</th><th>Вход</th><th>Выход</th><th>Qty</th><th>PnL</th><th>Закрыта</th></tr></thead><tbody>${history.map((item) => `<tr><td>${item.symbol}</td><td>${item.side === 'Buy' ? 'LONG' : 'SHORT'}</td><td>${price(item.entry)}</td><td>${price(item.exit)}</td><td>${quantity(item.qty)}</td><td class="${item.pnl >= 0 ? 'profit' : 'loss'}">${signedUsd(item.pnl)}</td><td>${dateTime(item.closedAt)}</td></tr>`).join('')}</tbody></table></section>` : '<section class="empty">Закрытых сделок пока нет</section>';
   $('#app').innerHTML = `${tabs}${activeTab === 'planner' ? plannerView() : activeTab === 'pending' ? pendingView : activeTab === 'history' ? historyView : activeView}`;
+  if (activeTab === 'planner') loadChart();
 }
 async function load() { try { const params = new URLSearchParams({ pnlWindow: String(pnlWindow) }); if (pnlWindow === -1 && pnlRange?.start && pnlRange?.end) { params.set('pnlStart', String(pnlRange.start)); params.set('pnlEnd', String(pnlRange.end)); } const response = await fetch(`/api/overview?${params}`); const data = await response.json(); if (data.error) throw new Error(data.error); render(data); } catch (error) { $('#hint').textContent = `Не удалось получить данные: ${error.message}`; } }
 $('#refresh').onclick = load;
@@ -144,6 +184,20 @@ document.addEventListener('change', (event) => {
   load();
 });
 document.addEventListener('click', (event) => {
+  const interval = event.target.closest('[data-interval]');
+  if (interval) { chartInterval = interval.dataset.interval; if (lastData) render(lastData); return; }
+  const target = event.target.closest('[data-chart-target]');
+  if (target) { chartTarget = target.dataset.chartTarget; if (lastData) render(lastData); return; }
+  const hit = event.target.closest('.chart-hit');
+  if (hit) {
+    const rect = hit.ownerSVGElement.getBoundingClientRect();
+    const max = Number(hit.dataset.chartMax), min = Number(hit.dataset.chartMin);
+    const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+    gridPlan[chartTarget] = String(max - y * (max - min));
+    localStorage.setItem(gridKey, JSON.stringify(gridPlan));
+    if (lastData) render(lastData);
+    return;
+  }
   const tab = event.target.closest('[data-tab]');
   if (!tab) return;
   activeTab = tab.dataset.tab;
