@@ -22,7 +22,7 @@ const pnlWindowKey = 'bybit-sizer:pnl-window';
 let pnlWindow = Number(localStorage.getItem(pnlWindowKey)) || 24;
 const pnlRangeKey = 'bybit-sizer:pnl-range';
 let pnlRange = JSON.parse(localStorage.getItem(pnlRangeKey) || 'null');
-let activeTab = 'active';
+let activeTab = telegram ? 'planner' : 'active';
 let lastData = null;
 const gridKey = 'bybit-sizer:grid-plan';
 const defaultGridPlan = { symbol: 'BTCUSDT', side: 'Sell', low: '', high: '', value: '100', orders: '5', stop: '', take: '', priceShape: 'equal', valueShape: 'ascending' };
@@ -30,6 +30,9 @@ let gridPlan = { ...defaultGridPlan, ...JSON.parse(localStorage.getItem(gridKey)
 let chartInterval = '60';
 let chartTarget = null;
 let chartRequest = 0;
+let instruments = [];
+let instrumentPickerOpen = false;
+let instrumentQuery = '';
 const toLocalInput = (timestamp) => {
   if (!timestamp) return '';
   const date = new Date(timestamp);
@@ -74,7 +77,20 @@ function plannerView() {
   const rows = grid.rows.length ? grid.rows.map((row) => `<tr><td>${row.index}</td><td>${price(row.entry)}</td><td>${usd(row.value)}</td><td>${quantity(row.qty)}</td><td>${money(row.value / grid.total * 100)}%</td></tr>`).join('') : '<tr><td colspan="5">Задай диапазон, стоимость и количество ордеров</td></tr>';
   const chartTools = [[null, 'Курсор'], ['low', 'Нижняя граница'], ['high', 'Верхняя граница'], ['stop', 'SL'], ['take', 'TP']]
     .map(([key, label]) => `<button class="chart-tool ${chartTarget === key ? 'active' : ''}" data-chart-target="${key || 'none'}">${label}</button>`).join('');
-  return `<section class="grid-planner"><div class="planner-head"><div><p class="eyebrow">ПЛАН · ТОЛЬКО РАСЧЁТ</p><h2>Масштабируемый ордер</h2></div><span>Ничего не отправляется на Bybit</span></div><div class="chart-workspace"><section class="chart-panel"><div class="chart-toolbar"><label class="chart-symbol"><span>Инструмент</span><input data-grid="symbol" value="${gridPlan.symbol || 'BTCUSDT'}" autocapitalize="characters" spellcheck="false"></label><div class="timeframes">${[['5','5m'],['15','15m'],['60','1h'],['240','4h'],['D','1D']].map(([value,label]) => `<button data-interval="${value}" class="${chartInterval === value ? 'active' : ''}">${label}</button>`).join('')}</div></div><div class="chart-tools"><span>Режим клика:</span>${chartTools}</div><div id="trade-chart" class="trade-chart"><span>Загрузка графика…</span></div><div class="chart-credit">Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView</a></div></section><section class="levels-form grid-form"><div class="form-title">Параметры сетки</div>${select('side', 'Направление', [['Sell', 'SHORT'], ['Buy', 'LONG']])}${input('low', 'Нижняя цена')}${input('high', 'Верхняя цена')}${input('value', 'Стоимость, USDT')}${input('orders', 'Количество ордеров', 'number')}${select('priceShape', 'Price', [['equal', 'Ровная'], ['ascending', 'Восходящая'], ['descending', 'Нисходящая']])}${select('valueShape', 'Value', [['equal', 'Ровный'], ['ascending', 'Восходящий'], ['descending', 'Нисходящий']])}${input('stop', 'Stop Loss')}${input('take', 'Take Profit')}</section></div><section class="grid-result"><div><span>Объём</span><b>${usd(grid.total)}</b></div><div><span>AVG entry</span><b>${price(grid.average)}</b></div><div><span>Full Risk</span><b class="loss">${signedUsd(grid.risk)}</b></div><div><span>Full TP</span><b class="profit">${signedUsd(grid.profit)}</b></div><div><span>Full RR</span><b>${grid.rr != null ? `${money(grid.rr)}R` : '—'}</b></div><div><span>Qty</span><b>${quantity(grid.qty)}</b></div></section><section class="table-block"><h3>Предпросмотр сетки · ${gridPlan.symbol || 'тикер'}</h3><table><thead><tr><th>Order</th><th>Entry</th><th>Value</th><th>Qty</th><th>Доля</th></tr></thead><tbody>${rows}</tbody></table></section></section>`;
+  const filteredInstruments = instruments.filter((item) => item.symbol.includes(instrumentQuery.toUpperCase())).slice(0, 100);
+  const picker = instrumentPickerOpen ? `<div class="instrument-picker"><div><input data-instrument-query placeholder="Поиск Bybit perpetual" value="${instrumentQuery}" autofocus><button data-close-instruments>×</button></div><section>${instruments.length ? filteredInstruments.map((item) => `<button data-symbol="${item.symbol}" class="${item.symbol === gridPlan.symbol ? 'selected' : ''}">${item.symbol}</button>`).join('') : 'Загружаю инструменты Bybit…'}</section></div>` : '';
+  return `<section class="grid-planner"><div class="chart-workspace"><section class="chart-panel"><div class="chart-toolbar"><button class="chart-symbol" data-open-instruments><span>Bybit Perpetual</span><b>${gridPlan.symbol || 'BTCUSDT'}⌄</b></button><div class="timeframes">${[['5','5m'],['15','15m'],['60','1h'],['240','4h'],['D','1D']].map(([value,label]) => `<button data-interval="${value}" class="${chartInterval === value ? 'active' : ''}">${label}</button>`).join('')}</div></div>${picker}<div class="chart-tools"><span>Режим клика:</span>${chartTools}</div><div id="trade-chart" class="trade-chart"><span>Загрузка графика…</span></div><div class="chart-credit">Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView</a></div></section><section class="levels-form grid-form"><div class="form-title">Сетка</div>${select('side', 'Направление', [['Sell', 'SHORT'], ['Buy', 'LONG']])}${input('low', 'Нижняя цена')}${input('high', 'Верхняя цена')}${input('value', 'Стоимость, USDT')}${input('orders', 'Количество ордеров', 'number')}${select('priceShape', 'Price', [['equal', 'Ровная'], ['ascending', 'Восходящая'], ['descending', 'Нисходящая']])}${select('valueShape', 'Value', [['equal', 'Ровный'], ['ascending', 'Восходящий'], ['descending', 'Нисходящий']])}${input('stop', 'Stop Loss')}${input('take', 'Take Profit')}</section></div><section class="grid-result"><div><span>Объём</span><b>${usd(grid.total)}</b></div><div><span>AVG entry</span><b>${price(grid.average)}</b></div><div><span>Full Risk</span><b class="loss">${signedUsd(grid.risk)}</b></div><div><span>Full TP</span><b class="profit">${signedUsd(grid.profit)}</b></div><div><span>Full RR</span><b>${grid.rr != null ? `${money(grid.rr)}R` : '—'}</b></div><div><span>Qty</span><b>${quantity(grid.qty)}</b></div></section><section class="table-block"><h3>Лимитки · ${gridPlan.symbol || 'тикер'}</h3><table><thead><tr><th>Order</th><th>Entry</th><th>Value</th><th>Qty</th><th>Доля</th></tr></thead><tbody>${rows}</tbody></table></section></section>`;
+}
+
+async function loadInstruments() {
+  if (instruments.length) return;
+  try {
+    const response = await fetch('/api/instruments', { headers: apiHeaders() });
+    const data = await response.json();
+    if (data.error) throw new Error(data.error);
+    instruments = data.items || [];
+    if (instrumentPickerOpen && lastData) render(lastData);
+  } catch (error) { instruments = []; }
 }
 
 async function loadChart() {
@@ -166,9 +182,7 @@ function render(data) {
   const pendingDeals = data.pendingDeals || [];
   const history = data.history || [];
   $('#hint').textContent = activeTab === 'active' ? `Сделки (${data.deals.length})` : activeTab === 'pending' ? `Ожидающие лимитки (${pendingDeals.length})` : activeTab === 'history' ? `История сделок (${history.length})` : 'Конструктор новой сетки';
-  const pnl24h = data.account.pnl24h;
-  const custom = pnlWindow === -1;
-  $('#account').innerHTML = `<span>Общий баланс <b>${usd(data.account.equity)}</b></span><span>Используется в сделках <b>${usd(data.account.usedMargin)}</b></span><span class="account-pnl">PnL за <select class="pnl-window" aria-label="Период PnL"><option value="24"${pnlWindow === 24 ? ' selected' : ''}>24ч</option><option value="168"${pnlWindow === 168 ? ' selected' : ''}>7д</option><option value="720"${pnlWindow === 720 ? ' selected' : ''}>30д</option><option value="-1"${custom ? ' selected' : ''}>свой период</option></select>${custom ? ` <label class="pnl-range">с <input class="pnl-start" type="datetime-local" value="${toLocalInput(pnlRange?.start)}"> по <input class="pnl-end" type="datetime-local" value="${toLocalInput(pnlRange?.end)}"></label>` : ''} <b class="${pnl24h >= 0 ? 'profit' : 'loss'}">${signedUsd(pnl24h)}</b></span>`;
+  $('#account').innerHTML = `<span>Баланс <b>${usd(data.account.equity)}</b></span><span>В сделках <b>${usd(data.account.usedMargin)}</b></span>`;
   const tabs = `<nav class="workspace-tabs"><button data-tab="planner" class="${activeTab === 'planner' ? 'active' : ''}">Новая сетка</button><button data-tab="pending" class="${activeTab === 'pending' ? 'active' : ''}">Ожидающие лимитки <b>${pendingDeals.length}</b></button><button data-tab="active" class="${activeTab === 'active' ? 'active' : ''}">Сделки <b>${data.deals.length}</b></button><button data-tab="history" class="${activeTab === 'history' ? 'active' : ''}">История сделок <b>${history.length}</b></button></nav>`;
   const activeView = data.deals.length ? data.deals.map((deal) => dealCard(deal, expandedDeals)).join('') : '<section class="empty">Нет активных сделок</section>';
   const pendingView = pendingDeals.length ? pendingDeals.map((deal) => dealCard(deal, expandedDeals)).join('') : '<section class="empty">Нет ожидающих лимиток</section>';
@@ -214,6 +228,18 @@ document.addEventListener('change', (event) => {
   load();
 });
 document.addEventListener('click', (event) => {
+  const openInstruments = event.target.closest('[data-open-instruments]');
+  if (openInstruments) { instrumentPickerOpen = true; if (lastData) render(lastData); loadInstruments(); return; }
+  if (event.target.closest('[data-close-instruments]')) { instrumentPickerOpen = false; if (lastData) render(lastData); return; }
+  const symbol = event.target.closest('[data-symbol]');
+  if (symbol) {
+    gridPlan.symbol = symbol.dataset.symbol;
+    instrumentPickerOpen = false;
+    instrumentQuery = '';
+    localStorage.setItem(gridKey, JSON.stringify(gridPlan));
+    if (lastData) render(lastData);
+    return;
+  }
   const interval = event.target.closest('[data-interval]');
   if (interval) { chartInterval = interval.dataset.interval; if (lastData) render(lastData); return; }
   const target = event.target.closest('[data-chart-target]');
@@ -229,6 +255,11 @@ document.addEventListener('click', (event) => {
   load();
 });
 document.addEventListener('input', (event) => {
+  if (event.target.matches('[data-instrument-query]')) {
+    instrumentQuery = event.target.value;
+    if (lastData) render(lastData);
+    return;
+  }
   if (!event.target.matches('[data-grid]')) return;
   if (event.target.dataset.grid === 'symbol') return;
   gridPlan[event.target.dataset.grid] = event.target.value;

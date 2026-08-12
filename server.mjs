@@ -218,6 +218,18 @@ function accountSummary(wallet, closedPnl = []) {
 }
 
 const closedPnlCache = new Map();
+let instrumentsCache = null;
+
+async function perpetualInstruments() {
+  if (instrumentsCache && Date.now() - instrumentsCache.at < 60 * 60 * 1000) return instrumentsCache.items;
+  const result = await publicBybit('/v5/market/instruments-info', { category: 'linear', limit: '1000' });
+  const items = (result.list || [])
+    .filter((item) => item.status === 'Trading' && item.contractType === 'LinearPerpetual' && item.quoteCoin === 'USDT')
+    .map((item) => ({ symbol: item.symbol, baseCoin: item.baseCoin }))
+    .sort((a, b) => a.symbol.localeCompare(b.symbol));
+  instrumentsCache = { at: Date.now(), items };
+  return items;
+}
 
 async function closedPnlForPeriod(hours, end = Date.now(), explicitStart = null) {
   const start = explicitStart || end - hours * 60 * 60 * 1000;
@@ -365,6 +377,18 @@ createServer(async (request, response) => {
       })).reverse();
       response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       response.end(JSON.stringify({ symbol, interval, candles }));
+    } catch (error) {
+      response.writeHead(502, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ error: friendlyError(error) }));
+    }
+    return;
+  }
+  if (url.pathname === '/api/instruments') {
+    if (!guardApi(request, response)) return;
+    try {
+      const items = await perpetualInstruments();
+      response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'public, max-age=3600' });
+      response.end(JSON.stringify({ items }));
     } catch (error) {
       response.writeHead(502, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ error: friendlyError(error) }));
