@@ -77,25 +77,6 @@ function plannerView() {
   return `<section class="grid-planner"><div class="planner-head"><div><p class="eyebrow">ПЛАН · ТОЛЬКО РАСЧЁТ</p><h2>Масштабируемый ордер</h2></div><span>Ничего не отправляется на Bybit</span></div><div class="chart-workspace"><section class="chart-panel"><div class="chart-toolbar"><b>${gridPlan.symbol || 'BTCUSDT'}</b><div class="timeframes">${[['5','5m'],['15','15m'],['60','1h'],['240','4h'],['D','1D']].map(([value,label]) => `<button data-interval="${value}" class="${chartInterval === value ? 'active' : ''}">${label}</button>`).join('')}</div></div><div class="chart-tools"><span>Кликни по графику:</span>${chartTools}</div><div id="trade-chart" class="trade-chart"><span>Загрузка графика…</span></div></section><section class="levels-form grid-form"><div class="form-title">Параметры сетки</div>${input('symbol', 'Тикер')}${select('side', 'Направление', [['Sell', 'SHORT'], ['Buy', 'LONG']])}${input('low', 'Нижняя цена')}${input('high', 'Верхняя цена')}${input('value', 'Стоимость, USDT')}${input('orders', 'Количество ордеров', 'number')}${select('priceShape', 'Price', [['equal', 'Ровная'], ['ascending', 'Восходящая'], ['descending', 'Нисходящая']])}${select('valueShape', 'Value', [['equal', 'Ровный'], ['ascending', 'Восходящий'], ['descending', 'Нисходящий']])}${input('stop', 'Stop Loss')}${input('take', 'Take Profit')}</section></div><section class="grid-result"><div><span>Объём</span><b>${usd(grid.total)}</b></div><div><span>AVG entry</span><b>${price(grid.average)}</b></div><div><span>Full Risk</span><b class="loss">${signedUsd(grid.risk)}</b></div><div><span>Full TP</span><b class="profit">${signedUsd(grid.profit)}</b></div><div><span>Full RR</span><b>${grid.rr != null ? `${money(grid.rr)}R` : '—'}</b></div><div><span>Qty</span><b>${quantity(grid.qty)}</b></div></section><section class="table-block"><h3>Предпросмотр сетки · ${gridPlan.symbol || 'тикер'}</h3><table><thead><tr><th>Order</th><th>Entry</th><th>Value</th><th>Qty</th><th>Доля</th></tr></thead><tbody>${rows}</tbody></table></section></section>`;
 }
 
-function chartSvg(candles) {
-  const width = 1000, height = 430, pad = { top: 20, right: 72, bottom: 24, left: 10 };
-  const all = candles.flatMap((candle) => [candle.high, candle.low]);
-  [gridPlan.low, gridPlan.high, gridPlan.stop, gridPlan.take].map(parsePrice).filter(Boolean).forEach((value) => all.push(value));
-  const min = Math.min(...all), max = Math.max(...all), range = Math.max(max - min, max * 0.002);
-  const y = (value) => pad.top + (max - value) / range * (height - pad.top - pad.bottom);
-  const x = (index) => pad.left + (index + .5) * (width - pad.left - pad.right) / candles.length;
-  const step = (width - pad.left - pad.right) / candles.length, bodyWidth = Math.max(1, step * .62);
-  const candlesSvg = candles.map((candle, index) => {
-    const up = candle.close >= candle.open, color = up ? '#44d19b' : '#ff7586';
-    const top = y(Math.max(candle.open, candle.close)), bottom = y(Math.min(candle.open, candle.close));
-    return `<line x1="${x(index)}" x2="${x(index)}" y1="${y(candle.high)}" y2="${y(candle.low)}" stroke="${color}"/><rect x="${x(index)-bodyWidth/2}" y="${top}" width="${bodyWidth}" height="${Math.max(1,bottom-top)}" fill="${color}"/>`;
-  }).join('');
-  const grid = makeGrid(gridPlan);
-  const line = (value, label, color, dash = '') => value ? `<g><line x1="${pad.left}" x2="${width-pad.right}" y1="${y(value)}" y2="${y(value)}" stroke="${color}" stroke-width="1.5" ${dash ? `stroke-dasharray="${dash}"` : ''}/><text x="${width-pad.right+5}" y="${y(value)+4}" fill="${color}" font-size="12">${label} ${price(value)}</text></g>` : '';
-  const orders = grid.rows.map((row, index) => line(row.entry, `#${index + 1}`, '#f6c24c', '5 4')).join('');
-  return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-label="График цены">${candlesSvg}${orders}${line(parsePrice(gridPlan.low),'LOW','#7fb3ff')}${line(parsePrice(gridPlan.high),'HIGH','#7fb3ff')}${line(parsePrice(gridPlan.stop),'SL','#ff7586')}${line(parsePrice(gridPlan.take),'TP','#44d19b')}<rect class="chart-hit" data-chart-min="${min}" data-chart-max="${max}" x="${pad.left}" y="${pad.top}" width="${width-pad.left-pad.right}" height="${height-pad.top-pad.bottom}" fill="transparent"/></svg>`;
-}
-
 async function loadChart() {
   const holder = $('#trade-chart');
   if (!holder) return;
@@ -107,7 +88,45 @@ async function loadChart() {
     const data = await response.json();
     if (data.error) throw new Error(data.error);
     if (request !== chartRequest || !$('#trade-chart')) return;
-    holder.innerHTML = chartSvg(data.candles);
+    if (!window.LightweightCharts) throw new Error('Не загрузилась библиотека графика');
+    holder.innerHTML = '';
+    const width = Math.max(280, holder.clientWidth), height = Math.max(260, holder.clientHeight);
+    const chart = LightweightCharts.createChart(holder, {
+      width, height,
+      layout: { background: { type: 'solid', color: '#101827' }, textColor: '#9eabc5', fontSize: 11 },
+      grid: { vertLines: { color: '#1d2a3e' }, horzLines: { color: '#1d2a3e' } },
+      rightPriceScale: { borderColor: '#334155' },
+      timeScale: { borderColor: '#334155', timeVisible: true, secondsVisible: false },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
+    });
+    const series = chart.addSeries(LightweightCharts.CandlestickSeries, {
+      upColor: '#2ec98a', downColor: '#ed6175', borderUpColor: '#2ec98a', borderDownColor: '#ed6175', wickUpColor: '#2ec98a', wickDownColor: '#ed6175'
+    });
+    series.setData(data.candles.map((candle) => ({ time: Math.floor(candle.time / 1000), open: candle.open, high: candle.high, low: candle.low, close: candle.close })));
+    const addLine = (value, title, color, style = LightweightCharts.LineStyle.Solid) => {
+      if (!value) return;
+      series.createPriceLine({ price: value, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title });
+    };
+    const grid = makeGrid(gridPlan);
+    grid.rows.forEach((row, index) => addLine(row.entry, `#${index + 1}`, '#f6c24c', LightweightCharts.LineStyle.Dashed));
+    addLine(parsePrice(gridPlan.low), 'LOW', '#7fb3ff');
+    addLine(parsePrice(gridPlan.high), 'HIGH', '#7fb3ff');
+    addLine(parsePrice(gridPlan.stop), 'SL', '#ed6175');
+    addLine(parsePrice(gridPlan.take), 'TP', '#2ec98a');
+    chart.subscribeClick((point) => {
+      if (!point.point) return;
+      const selected = series.coordinateToPrice(point.point.y);
+      if (selected == null) return;
+      gridPlan[chartTarget] = String(selected);
+      localStorage.setItem(gridKey, JSON.stringify(gridPlan));
+      if (telegram?.HapticFeedback) telegram.HapticFeedback.impactOccurred('light');
+      if (lastData) render(lastData);
+    });
+    chart.timeScale().fitContent();
+    const resize = new ResizeObserver(() => chart.applyOptions({ width: Math.max(280, holder.clientWidth), height: Math.max(260, holder.clientHeight) }));
+    resize.observe(holder);
+    holder._chartResize = resize;
+    holder.insertAdjacentHTML('afterend', '<div class="chart-credit">Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView</a></div>');
   } catch (error) { holder.innerHTML = `<span>Не удалось загрузить график: ${error.message}</span>`; }
 }
 
@@ -198,16 +217,6 @@ document.addEventListener('click', (event) => {
   if (interval) { chartInterval = interval.dataset.interval; if (lastData) render(lastData); return; }
   const target = event.target.closest('[data-chart-target]');
   if (target) { chartTarget = target.dataset.chartTarget; if (lastData) render(lastData); return; }
-  const hit = event.target.closest('.chart-hit');
-  if (hit) {
-    const rect = hit.ownerSVGElement.getBoundingClientRect();
-    const max = Number(hit.dataset.chartMax), min = Number(hit.dataset.chartMin);
-    const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
-    gridPlan[chartTarget] = String(max - y * (max - min));
-    localStorage.setItem(gridKey, JSON.stringify(gridPlan));
-    if (lastData) render(lastData);
-    return;
-  }
   const tab = event.target.closest('[data-tab]');
   if (!tab) return;
   activeTab = tab.dataset.tab;
@@ -219,4 +228,4 @@ document.addEventListener('input', (event) => {
   localStorage.setItem(gridKey, JSON.stringify(gridPlan));
   if (lastData) render(lastData);
 });
-load(); setInterval(load, 5000);
+load(); setInterval(() => activeTab === 'planner' ? loadChart() : load(), 5000);
