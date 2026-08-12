@@ -66,6 +66,10 @@ function telegramUser(initData) {
 
 function guardApi(request, response) {
   if (env.TELEGRAM_REQUIRE_AUTH !== '1') return true;
+  // Keep the private local terminal usable on the Windows host. The public
+  // Funnel request retains its ts.net Host header and must pass Telegram auth.
+  const host = String(request.headers.host || '').toLowerCase().split(':')[0];
+  if (host === '127.0.0.1' || host === 'localhost') return true;
   try { telegramUser(request.headers['x-telegram-init-data']); return true; }
   catch (error) {
     response.writeHead(401, { 'content-type': 'application/json' });
