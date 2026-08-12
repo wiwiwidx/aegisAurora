@@ -74,6 +74,8 @@ function guardApi(request, response) {
   if (host === '127.0.0.1' || host === 'localhost') return true;
   try { telegramUser(request.headers['x-telegram-init-data']); return true; }
   catch (error) {
+    // Diagnostics only: never log initData, bot tokens, Bybit keys or signatures.
+    console.log(`Telegram API denied: host=${request.headers.host || 'unknown'} reason=${friendlyError(error)}`);
     response.writeHead(401, { 'content-type': 'application/json' });
     response.end(JSON.stringify({ error: friendlyError(error) }));
     return false;
@@ -337,6 +339,7 @@ async function overview(pnlHours = 24, pnlStart = null, pnlEnd = null) {
 
 createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host}`);
+  if (request.headers.host && !url.pathname.startsWith('/api/')) console.log(`Web request: host=${request.headers.host} path=${url.pathname}`);
   if (url.pathname === '/api/overview') {
     if (!guardApi(request, response)) return;
     try {
