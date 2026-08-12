@@ -53,7 +53,9 @@ function telegramUser(initData) {
   const hash = params.get('hash');
   if (!hash) throw new Error('Открой терминал через Telegram');
   params.delete('hash');
-  const checkString = [...params.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => `${key}=${value}`).join('\n');
+  // Telegram requires bytewise alphabetical parameter ordering. localeCompare
+  // can order underscore-containing keys differently on a Russian Windows host.
+  const checkString = [...params.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, value]) => `${key}=${value}`).join('\n');
   const secret = createHmac('sha256', 'WebAppData').update(env.TELEGRAM_BOT_TOKEN).digest();
   const signature = createHmac('sha256', secret).update(checkString).digest('hex');
   if (hash.length !== signature.length || !timingSafeEqual(Buffer.from(hash), Buffer.from(signature))) throw new Error('Telegram-подпись не прошла проверку');

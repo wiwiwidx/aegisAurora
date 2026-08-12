@@ -190,7 +190,7 @@ function render(data) {
   $('#app').innerHTML = `${tabs}${activeTab === 'planner' ? plannerView() : activeTab === 'pending' ? pendingView : activeTab === 'history' ? historyView : activeView}`;
   if (activeTab === 'planner') loadChart();
 }
-async function load() { try { const params = new URLSearchParams({ pnlWindow: String(pnlWindow) }); if (pnlWindow === -1 && pnlRange?.start && pnlRange?.end) { params.set('pnlStart', String(pnlRange.start)); params.set('pnlEnd', String(pnlRange.end)); } const response = await fetch(`/api/overview?${params}`, { headers: apiHeaders() }); const data = await response.json(); if (data.error) throw new Error(data.error); render(data); } catch (error) { $('#hint').textContent = `Не удалось получить данные: ${error.message}`; } }
+async function load() { try { const params = new URLSearchParams({ pnlWindow: String(pnlWindow) }); if (pnlWindow === -1 && pnlRange?.start && pnlRange?.end) { params.set('pnlStart', String(pnlRange.start)); params.set('pnlEnd', String(pnlRange.end)); } const response = await fetch(`/api/overview?${params}`, { headers: apiHeaders() }); const data = await response.json(); if (data.error) throw new Error(data.error); render(data); } catch (error) { const message = `Не удалось получить данные: ${error.message}`; $('#hint').textContent = message; if (telegram) $('#app').innerHTML = `<section class="mini-error">${message}<br><small>Закрой Mini App и открой его через кнопку Menu у @AegisAurorabot.</small></section>`; } }
 $('#refresh').onclick = load;
 document.addEventListener('change', (event) => {
   if (event.target.matches('.pnl-window')) {
