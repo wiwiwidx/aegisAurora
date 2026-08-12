@@ -28,7 +28,7 @@ const gridKey = 'bybit-sizer:grid-plan';
 const defaultGridPlan = { symbol: 'BTCUSDT', side: 'Sell', low: '', high: '', value: '100', orders: '5', stop: '', take: '', priceShape: 'equal', valueShape: 'ascending' };
 let gridPlan = { ...defaultGridPlan, ...JSON.parse(localStorage.getItem(gridKey) || '{}') };
 let chartInterval = '60';
-let chartTarget = 'low';
+let chartTarget = null;
 let chartRequest = 0;
 const toLocalInput = (timestamp) => {
   if (!timestamp) return '';
@@ -72,9 +72,9 @@ function plannerView() {
   const input = (key, label, type = 'text') => `<label><span>${label}</span><input data-grid="${key}" class="plan-input" type="${type}" inputmode="decimal" value="${gridPlan[key]}"></label>`;
   const select = (key, label, values) => `<label><span>${label}</span><select data-grid="${key}" class="plan-input">${values.map(([value, title]) => `<option value="${value}"${gridPlan[key] === value ? ' selected' : ''}>${title}</option>`).join('')}</select></label>`;
   const rows = grid.rows.length ? grid.rows.map((row) => `<tr><td>${row.index}</td><td>${price(row.entry)}</td><td>${usd(row.value)}</td><td>${quantity(row.qty)}</td><td>${money(row.value / grid.total * 100)}%</td></tr>`).join('') : '<tr><td colspan="5">Задай диапазон, стоимость и количество ордеров</td></tr>';
-  const chartTools = [['low', 'Нижняя граница'], ['high', 'Верхняя граница'], ['stop', 'SL'], ['take', 'TP']]
-    .map(([key, label]) => `<button class="chart-tool ${chartTarget === key ? 'active' : ''}" data-chart-target="${key}">${label}</button>`).join('');
-  return `<section class="grid-planner"><div class="planner-head"><div><p class="eyebrow">ПЛАН · ТОЛЬКО РАСЧЁТ</p><h2>Масштабируемый ордер</h2></div><span>Ничего не отправляется на Bybit</span></div><div class="chart-workspace"><section class="chart-panel"><div class="chart-toolbar"><b>${gridPlan.symbol || 'BTCUSDT'}</b><div class="timeframes">${[['5','5m'],['15','15m'],['60','1h'],['240','4h'],['D','1D']].map(([value,label]) => `<button data-interval="${value}" class="${chartInterval === value ? 'active' : ''}">${label}</button>`).join('')}</div></div><div class="chart-tools"><span>Кликни по графику:</span>${chartTools}</div><div id="trade-chart" class="trade-chart"><span>Загрузка графика…</span></div><div class="chart-credit">Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView</a></div></section><section class="levels-form grid-form"><div class="form-title">Параметры сетки</div>${input('symbol', 'Тикер')}${select('side', 'Направление', [['Sell', 'SHORT'], ['Buy', 'LONG']])}${input('low', 'Нижняя цена')}${input('high', 'Верхняя цена')}${input('value', 'Стоимость, USDT')}${input('orders', 'Количество ордеров', 'number')}${select('priceShape', 'Price', [['equal', 'Ровная'], ['ascending', 'Восходящая'], ['descending', 'Нисходящая']])}${select('valueShape', 'Value', [['equal', 'Ровный'], ['ascending', 'Восходящий'], ['descending', 'Нисходящий']])}${input('stop', 'Stop Loss')}${input('take', 'Take Profit')}</section></div><section class="grid-result"><div><span>Объём</span><b>${usd(grid.total)}</b></div><div><span>AVG entry</span><b>${price(grid.average)}</b></div><div><span>Full Risk</span><b class="loss">${signedUsd(grid.risk)}</b></div><div><span>Full TP</span><b class="profit">${signedUsd(grid.profit)}</b></div><div><span>Full RR</span><b>${grid.rr != null ? `${money(grid.rr)}R` : '—'}</b></div><div><span>Qty</span><b>${quantity(grid.qty)}</b></div></section><section class="table-block"><h3>Предпросмотр сетки · ${gridPlan.symbol || 'тикер'}</h3><table><thead><tr><th>Order</th><th>Entry</th><th>Value</th><th>Qty</th><th>Доля</th></tr></thead><tbody>${rows}</tbody></table></section></section>`;
+  const chartTools = [[null, 'Курсор'], ['low', 'Нижняя граница'], ['high', 'Верхняя граница'], ['stop', 'SL'], ['take', 'TP']]
+    .map(([key, label]) => `<button class="chart-tool ${chartTarget === key ? 'active' : ''}" data-chart-target="${key || 'none'}">${label}</button>`).join('');
+  return `<section class="grid-planner"><div class="planner-head"><div><p class="eyebrow">ПЛАН · ТОЛЬКО РАСЧЁТ</p><h2>Масштабируемый ордер</h2></div><span>Ничего не отправляется на Bybit</span></div><div class="chart-workspace"><section class="chart-panel"><div class="chart-toolbar"><label class="chart-symbol"><span>Инструмент</span><input data-grid="symbol" value="${gridPlan.symbol || 'BTCUSDT'}" autocapitalize="characters" spellcheck="false"></label><div class="timeframes">${[['5','5m'],['15','15m'],['60','1h'],['240','4h'],['D','1D']].map(([value,label]) => `<button data-interval="${value}" class="${chartInterval === value ? 'active' : ''}">${label}</button>`).join('')}</div></div><div class="chart-tools"><span>Режим клика:</span>${chartTools}</div><div id="trade-chart" class="trade-chart"><span>Загрузка графика…</span></div><div class="chart-credit">Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView</a></div></section><section class="levels-form grid-form"><div class="form-title">Параметры сетки</div>${select('side', 'Направление', [['Sell', 'SHORT'], ['Buy', 'LONG']])}${input('low', 'Нижняя цена')}${input('high', 'Верхняя цена')}${input('value', 'Стоимость, USDT')}${input('orders', 'Количество ордеров', 'number')}${select('priceShape', 'Price', [['equal', 'Ровная'], ['ascending', 'Восходящая'], ['descending', 'Нисходящая']])}${select('valueShape', 'Value', [['equal', 'Ровный'], ['ascending', 'Восходящий'], ['descending', 'Нисходящий']])}${input('stop', 'Stop Loss')}${input('take', 'Take Profit')}</section></div><section class="grid-result"><div><span>Объём</span><b>${usd(grid.total)}</b></div><div><span>AVG entry</span><b>${price(grid.average)}</b></div><div><span>Full Risk</span><b class="loss">${signedUsd(grid.risk)}</b></div><div><span>Full TP</span><b class="profit">${signedUsd(grid.profit)}</b></div><div><span>Full RR</span><b>${grid.rr != null ? `${money(grid.rr)}R` : '—'}</b></div><div><span>Qty</span><b>${quantity(grid.qty)}</b></div></section><section class="table-block"><h3>Предпросмотр сетки · ${gridPlan.symbol || 'тикер'}</h3><table><thead><tr><th>Order</th><th>Entry</th><th>Value</th><th>Qty</th><th>Доля</th></tr></thead><tbody>${rows}</tbody></table></section></section>`;
 }
 
 async function loadChart() {
@@ -114,11 +114,13 @@ async function loadChart() {
     addLine(parsePrice(gridPlan.stop), 'SL', '#ed6175');
     addLine(parsePrice(gridPlan.take), 'TP', '#2ec98a');
     chart.subscribeClick((point) => {
+      if (!chartTarget) return;
       if (!point.point) return;
       const selected = series.coordinateToPrice(point.point.y);
       if (selected == null) return;
       gridPlan[chartTarget] = String(selected);
       localStorage.setItem(gridKey, JSON.stringify(gridPlan));
+      chartTarget = null;
       if (telegram?.HapticFeedback) telegram.HapticFeedback.impactOccurred('light');
       if (lastData) render(lastData);
     });
@@ -216,7 +218,7 @@ document.addEventListener('click', (event) => {
   if (interval) { chartInterval = interval.dataset.interval; if (lastData) render(lastData); return; }
   const target = event.target.closest('[data-chart-target]');
   if (target) {
-    chartTarget = target.dataset.chartTarget;
+    chartTarget = target.dataset.chartTarget === 'none' ? null : target.dataset.chartTarget;
     // Picking a tool is only a UI action. Do not recreate or reload the chart.
     document.querySelectorAll('[data-chart-target]').forEach((button) => button.classList.toggle('active', button === target));
     return;
@@ -228,6 +230,7 @@ document.addEventListener('click', (event) => {
 });
 document.addEventListener('input', (event) => {
   if (!event.target.matches('[data-grid]')) return;
+  if (event.target.dataset.grid === 'symbol') return;
   gridPlan[event.target.dataset.grid] = event.target.value;
   localStorage.setItem(gridKey, JSON.stringify(gridPlan));
   if (lastData) render(lastData);
