@@ -54,7 +54,9 @@ safe areas and theme.
 For the first private Mini App launch we need a stable public **HTTPS** URL to
 the Windows server and then set that URL as the Main Mini App for
 `@AegisAurorabot` in BotFather. Do not expose the server without access checks.
-When the public tunnel is configured, add these values only to Windows `.env`:
+On Windows, run `configure-telegram.bat`: it requests the bot token without
+displaying it, asks for your numeric Telegram ID, and writes these values only
+to the local `.env`:
 
 ```env
 TELEGRAM_BOT_TOKEN=put-the-bot-token-here
@@ -65,3 +67,9 @@ TELEGRAM_REQUIRE_AUTH=1
 `TELEGRAM_REQUIRE_AUTH=1` makes every API request validate Telegram's signed
 Mini App session and rejects anyone except `TELEGRAM_ALLOWED_USER_ID`. Never
 put the token in Git or in a chat.
+
+Then restart the server and run `enable-telegram-tunnel.bat`. Tailscale will
+ask for a one-time browser approval and print a persistent `https://...ts.net`
+address. Use that address in BotFather when configuring the bot's Main Mini
+App. The tunnel is public only at the network edge; application data stays
+behind Telegram's signed-session check and your one-user allowlist.
