@@ -404,6 +404,8 @@ createServer(async (request, response) => {
   const file = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
   const path = join(root, file);
   if (!path.startsWith(root) || !existsSync(path)) { response.writeHead(404); response.end('Not found'); return; }
-  response.writeHead(200, { 'content-type': mime[extname(path)] || 'application/octet-stream' });
+  // Telegram WebView can retain an old JS bundle for the same Mini App URL.
+  // The terminal is live, so always serve fresh HTML/CSS/JS after an update.
+  response.writeHead(200, { 'content-type': mime[extname(path)] || 'application/octet-stream', 'cache-control': 'no-store, max-age=0' });
   createReadStream(path).pipe(response);
 }).listen(port, '127.0.0.1', () => console.log(`Sizer running at http://127.0.0.1:${port}`));
