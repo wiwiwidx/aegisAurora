@@ -215,7 +215,12 @@ document.addEventListener('click', (event) => {
   const interval = event.target.closest('[data-interval]');
   if (interval) { chartInterval = interval.dataset.interval; if (lastData) render(lastData); return; }
   const target = event.target.closest('[data-chart-target]');
-  if (target) { chartTarget = target.dataset.chartTarget; if (lastData) render(lastData); return; }
+  if (target) {
+    chartTarget = target.dataset.chartTarget;
+    // Picking a tool is only a UI action. Do not recreate or reload the chart.
+    document.querySelectorAll('[data-chart-target]').forEach((button) => button.classList.toggle('active', button === target));
+    return;
+  }
   const tab = event.target.closest('[data-tab]');
   if (!tab) return;
   activeTab = tab.dataset.tab;
