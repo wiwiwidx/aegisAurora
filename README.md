@@ -39,3 +39,8 @@ Keep the Sizer running only on Windows. Install Tailscale on both computers and
 sign in to the same Tailscale account. Then run `enable-mac-access.bat` on
 Windows once. It creates a private HTTPS link to the Windows-only server; the
 app is not exposed to the public internet.
+# Manual control on Windows
+
+By default, use `start.bat` to start the Sizer and keep its window open. Use `stop-sizer.bat` to stop it, or `restart-sizer.bat` to restart it.
+
+If an older setup enabled background start after Windows sign-in, run `disable-autostart.bat` once. It removes that startup shortcut; the Sizer will then run only when you start it manually.
